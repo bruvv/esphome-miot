@@ -80,6 +80,7 @@ void MiotFan::dump_config() {
   ESP_LOGCONFIG(TAG, "  State PIID: %" PRIu32, this->state_piid_);
   ESP_LOGCONFIG(TAG, "  Speed SIID: %" PRIu32, this->speed_siid_);
   ESP_LOGCONFIG(TAG, "  Speed PIID: %" PRIu32, this->speed_piid_);
+  ESP_LOGCONFIG(TAG, "  Expose Speed: %s", YESNO(this->expose_speed_));
   ESP_LOGCONFIG(TAG, "  Speed Min/Max/Step: %" PRIu32 "/%" PRIu32 "/%" PRIu32, this->speed_min_, this->speed_max_, this->speed_step_);
   if (this->oscillating_siid_ != 0 && this->oscillating_piid_ != 0) {
     ESP_LOGCONFIG(TAG, "  Oscillating SIID: %" PRIu32, this->oscillating_siid_);
@@ -107,10 +108,12 @@ void MiotFan::dump_config() {
 }
 
 fan::FanTraits MiotFan::get_traits() {
+  const bool supports_speed = this->expose_speed_ && this->speed_siid_ != 0 && this->speed_piid_ != 0;
+  const int speed_count = supports_speed ? static_cast<int>((this->speed_max_ - this->speed_min_) / this->speed_step_ + 1) : 0;
   fan::FanTraits traits(this->oscillating_siid_ != 0 && this->oscillating_piid_ != 0,
-                        this->speed_siid_ != 0 && this->speed_piid_ != 0,
+                        supports_speed,
                         this->direction_siid_ != 0 && this->direction_piid_ != 0,
-                        (this->speed_max_ - this->speed_min_) / this->speed_step_ + 1);
+                        speed_count);
 
   std::vector<const char *> modes;
   for (auto const &iter : preset_modes_)
@@ -124,6 +127,28 @@ void MiotFan::control(const fan::FanCall &call) {
   optional<uint8_t> mode;
   const auto requested_state = call.get_state();
   const bool turning_on = requested_state.has_value() && *requested_state && !this->state;
+  auto should_skip_by_low_water_guard = [this](uint32_t target_siid, uint32_t target_piid) -> bool {
+    if (!this->low_water_guard_enabled_)
+      return false;
+    if (target_siid != this->speed_siid_ || target_piid != this->speed_piid_)
+      return false;
+
+    uint32_t level = 0;
+    if (this->parent_->get_cached_property_uint(this->low_water_guard_siid_, this->low_water_guard_piid_, &level)) {
+      if (level <= this->low_water_guard_min_) {
+        ESP_LOGW(TAG,
+                 "Skipping write %" PRIu32 ":%" PRIu32 " due to low-water guard (%" PRIu32 ":%" PRIu32 "=%" PRIu32 " <= %" PRIu32 ")",
+                 target_siid, target_piid, this->low_water_guard_siid_, this->low_water_guard_piid_, level,
+                 this->low_water_guard_min_);
+        return true;
+      }
+    } else {
+      ESP_LOGD(TAG, "Low-water guard: no cached value for %" PRIu32 ":%" PRIu32 ", allowing write",
+               this->low_water_guard_siid_, this->low_water_guard_piid_);
+    }
+
+    return false;
+  };
 
   const StringRef mode_from = this->get_preset_mode();
   const StringRef mode_to = StringRef::from_maybe_nullptr(call.get_preset_mode());
@@ -153,24 +178,17 @@ void MiotFan::control(const fan::FanCall &call) {
   const bool target_state = requested_state.value_or(this->state);
   if (target_state) {
     if (mode.has_value()) {
+      if (should_skip_by_low_water_guard(this->preset_modes_siid_, this->preset_modes_piid_))
+        return;
       this->speed = 0;
       this->parent_->set_property(this->preset_modes_siid_, this->preset_modes_piid_, MiotValue(*mode));
     } else if (call.get_speed().has_value()) {
-      if (this->low_water_guard_enabled_) {
-        uint32_t level = 0;
-        if (this->parent_->get_cached_property_uint(this->low_water_guard_siid_, this->low_water_guard_piid_, &level)) {
-          if (level <= this->low_water_guard_min_) {
-            ESP_LOGW(TAG,
-                     "Skipping speed write %" PRIu32 ":%" PRIu32 " due to low-water guard (%" PRIu32 ":%" PRIu32 "=%" PRIu32 " <= %" PRIu32 ")",
-                     this->speed_siid_, this->speed_piid_, this->low_water_guard_siid_, this->low_water_guard_piid_, level,
-                     this->low_water_guard_min_);
-            return;
-          }
-        } else {
-          ESP_LOGD(TAG, "Low-water guard: no cached value for %" PRIu32 ":%" PRIu32 ", allowing speed write",
-                   this->low_water_guard_siid_, this->low_water_guard_piid_);
-        }
+      if (!this->expose_speed_) {
+        ESP_LOGW(TAG, "Ignoring speed update because speed control is disabled for this fan");
+        return;
       }
+      if (should_skip_by_low_water_guard(this->speed_siid_, this->speed_piid_))
+        return;
       this->clear_preset_mode_();
       if (this->manual_speed_preset_.has_value())
         this->parent_->set_property(this->preset_modes_siid_, this->preset_modes_piid_, MiotValue(*this->manual_speed_preset_));
