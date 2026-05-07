@@ -25,10 +25,14 @@ esp32:
 logger:
   level: INFO
 
-esp32_ble_tracker:
+# esp32_ble_tracker:
+#   scan_parameters:
+#     active: True # Whether to send scan-request packets to devices to gather more info (like devicename)
+#     interval: 320ms # default 320ms
+#     window:   300ms # default 30ms
 
-bluetooth_proxy:
-  active: true
+# bluetooth_proxy:
+#   active: True # Whether to send scan-request packets to devices to gather more info (like devicename)
 
 api:
   encryption:
@@ -190,7 +194,6 @@ sensor:
       - clamp:
           min_value: 0
           max_value: 100
-          ignore_out_of_range: true
   - platform: "miot"
     miot_siid: 2
     miot_piid: 11
