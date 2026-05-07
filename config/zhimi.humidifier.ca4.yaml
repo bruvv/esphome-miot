@@ -8,7 +8,7 @@ esphome:
   friendly_name: Air Humidifier
   comment: Smartmi Evaporative Humidifier 2 (zhimi.humidifier.ca4)
   project:
-    name: "dhewg.esphome-miot"
+    name: "bruvv.esphome-miot"
     version: "zhimi.humidifier.ca4"
 
 esp32:
