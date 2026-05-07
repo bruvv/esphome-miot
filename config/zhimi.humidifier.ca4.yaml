@@ -1,7 +1,7 @@
 # https://home.miot-spec.com/spec/zhimi.humidifier.ca4
 
 external_components:
-  source: github://dhewg/esphome-miot@main
+  source: github://bruvv/esphome-miot@main
 
 esphome:
   name: humidifier
@@ -20,6 +20,7 @@ esp32:
     advanced:
       ignore_efuse_custom_mac: true
       ignore_efuse_mac_crc: true
+      sram1_as_iram: true
 
 logger:
   level: INFO
@@ -43,9 +44,13 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   ap:
-    password: !secret wifi_ap_password
+    password: !secret wifi_password
 
 captive_portal:
+
+time:
+  - platform: homeassistant
+    id: ha_time
 
 uart:
   tx_pin: GPIO17
@@ -64,8 +69,13 @@ fan:
     speed:
       miot_siid: 2
       miot_piid: 5
-      min_value: 0
+      min_value: 1
       max_value: 3
+    preset_modes:
+      miot_siid: 2
+      miot_piid: 5
+      options:
+        0: "Auto"
 
 switch:
   - platform: "miot"
@@ -92,6 +102,18 @@ switch:
     icon: mdi:water-minus
     entity_category: config
 
+number:
+  - platform: "miot"
+    miot_siid: 2
+    miot_piid: 6
+    name: "Target Humidity"
+    icon: mdi:water-percent
+    unit_of_measurement: "%"
+    min_value: 30
+    max_value: 80
+    step: 1
+    mode: slider
+
 select:
   - platform: "miot"
     miot_siid: 5
@@ -104,7 +126,32 @@ select:
       1: "Glimmer"
       2: "Brightest"
 
+text_sensor:
+  - platform: "miot"
+    miot_siid: 2
+    miot_piid: 10
+    name: "Country Code"
+    icon: mdi:earth
+    entity_category: diagnostic
+
 sensor:
+  - platform: "miot"
+    miot_siid: 2
+    miot_piid: 9
+    name: "Use Time"
+    unit_of_measurement: "s"
+    device_class: duration
+    state_class: total_increasing
+    icon: mdi:timer
+    entity_category: diagnostic
+  - platform: "miot"
+    miot_siid: 3
+    miot_piid: 8
+    name: "Dew Point"
+    unit_of_measurement: "%"
+    state_class: measurement
+    icon: mdi:water-thermometer
+    entity_category: diagnostic
   - platform: "miot"
     miot_siid: 2
     miot_piid: 2
