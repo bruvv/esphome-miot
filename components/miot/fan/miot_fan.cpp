@@ -33,10 +33,16 @@ void MiotFan::setup() {
         ESP_LOGW(TAG, "Ignoring MCU reported speed, fan is off");
       return;
     }
-    if (this->has_preset_mode()) {
-      ESP_LOGW(TAG, "Ignoring MCU reported speed, in preset mode");
+    // value reported on a register shared with preset modes: skip if it matches a preset key
+    if (this->preset_modes_.find(value.as_uint) != this->preset_modes_.end())
+      return;
+    // value out of configured speed range: skip (handled by preset listener if any)
+    if (value.as_uint < this->speed_min_ || value.as_uint > this->speed_max_) {
+      ESP_LOGV(TAG, "Ignoring out-of-range speed value %" PRIu32, value.as_uint);
       return;
     }
+    if (this->has_preset_mode())
+      this->clear_preset_mode_();
     this->speed = (value.as_uint - this->speed_min_) / this->speed_step_ + 1;
     ESP_LOGV(TAG, "MCU reported speed %" PRIu32 ":%" PRIu32 " is: %" PRIi32 " (raw: %" PRIu32 ")", this->speed_siid_, this->speed_piid_, this->speed, value.as_uint);
     this->publish_state();
@@ -64,6 +70,9 @@ void MiotFan::setup() {
       } else {
         auto it = preset_modes_.find(value.as_uint);
         if (it == preset_modes_.end()) {
+          // not a preset; if speed listener is registered on the same register it will handle the value
+          if (this->preset_modes_siid_ == this->speed_siid_ && this->preset_modes_piid_ == this->speed_piid_)
+            return;
           ESP_LOGE(TAG, "Unknown preset mode value %" PRIu32 "", value.as_uint);
           return;
         }
@@ -72,6 +81,15 @@ void MiotFan::setup() {
       }
       this->publish_state();
     });
+
+  // populate Fan-owned preset modes vector (replaces deprecated FanTraits::set_supported_preset_modes)
+  if (!this->preset_modes_.empty()) {
+    std::vector<const char *> modes;
+    modes.reserve(this->preset_modes_.size());
+    for (auto const &iter : this->preset_modes_)
+      modes.push_back(iter.second);
+    this->set_supported_preset_modes(modes);
+  }
 }
 
 void MiotFan::dump_config() {
@@ -106,10 +124,8 @@ fan::FanTraits MiotFan::get_traits() {
                         this->direction_siid_ != 0 && this->direction_piid_ != 0,
                         (this->speed_max_ - this->speed_min_) / this->speed_step_ + 1);
 
-  std::vector<const char *> modes;
-  for (auto const &iter : preset_modes_)
-    modes.push_back(iter.second);
-  traits.set_supported_preset_modes(modes);
+  // ESPHome 2026.4.0+: preset modes vector lives on the Fan entity; wire pointer into traits
+  this->wire_preset_modes_(traits);
 
   return traits;
 }
