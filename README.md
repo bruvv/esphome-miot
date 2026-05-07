@@ -85,15 +85,14 @@ Once your newly added device is working, please open a PR to add its config here
 ## Home assistant UI Cards
 
 You can use this card to control the Xiaomi humidifier 2 (ca4)
-![CA4 home assistant esphome card](screenshots/image.png)
+![CA4 home assistant esphome card](screenshots/ca4.png)
 
 ```
 type: vertical-stack
 cards:
   - type: custom:mushroom-title-card
-    title: Humidifier
+    title: Air Humidifier
     subtitle: Smartmi Evaporative 2
-
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-entity-card
@@ -117,43 +116,43 @@ cards:
         icon_color: cyan
         primary_info: state
         secondary_info: name
-
   - type: custom:mushroom-fan-card
     entity: fan.air_humidifier_fan
     name: Fan
     icon_animation: true
     show_percentage_control: true
     show_oscillate_control: false
-    collapsible_controls: false
+    collapsible_controls: true
     fill_container: false
-
+    show_direction_control: false
+    tap_action:
+      action: more-info
+    hold_action:
+      action: toggle
   - type: custom:mushroom-select-card
     entity: select.air_humidifier_display_brightness
     name: Display
     icon: mdi:brightness-6
-
   - type: custom:mushroom-number-card
     entity: number.air_humidifier_target_humidity
-    name: Target humidity
+    name: Target Humidity
     icon: mdi:target
     icon_color: teal
     display_mode: slider
-
   - type: conditional
     conditions:
       - entity: fan.air_humidifier_fan
-        attribute: preset_mode
+        attribute: preset_modes
         state: Auto
     card:
       type: custom:mushroom-template-card
       primary: Auto mode active
       secondary: >-
-        Target {{ states('number.air_humidifier_target_humidity') }}% - now {{
+        Target {{ states('number.air_humidifier_target_humidity') }}% — now {{
         states('sensor.air_humidifier_relative_humidity') }}%
       icon: mdi:auto-mode
       icon_color: green
       fill_container: true
-
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-entity-card
@@ -184,15 +183,19 @@ cards:
         icon_color: pink
         tap_action:
           action: toggle
-
   - type: custom:mini-graph-card
     entities:
       - entity: sensor.air_humidifier_relative_humidity
         name: Humidity
         color: '#03a9f4'
+        show_state: true
       - entity: number.air_humidifier_target_humidity
         name: Target
         color: '#4caf50'
+        show_state: true
+      - entity: sensor.air_humidifier_actual_speed
+        name: Motor RPM
+        color: '#ff9800'
         show_state: true
         y_axis: secondary
     name: Humidity trend
@@ -200,11 +203,13 @@ cards:
     points_per_hour: 6
     line_width: 2
     smoothing: true
+    lower_bound: 30
+    upper_bound: 80
     show:
       labels: true
-      labels_secondary: false
+      labels_secondary: true
       legend: true
-
+      fill: fade
   - type: entities
     title: Diagnostics
     show_header_toggle: false
@@ -215,10 +220,20 @@ cards:
       - entity: sensor.air_humidifier_actual_speed
         name: Actual RPM
         icon: mdi:fan-clock
+      - entity: sensor.air_humidifier_dew_point
+        name: Dew Point
+        icon: mdi:water-thermometer
+      - entity: sensor.air_humidifier_use_time
+        name: Use Time
+        icon: mdi:timer
       - entity: sensor.air_humidifier_device_fault_code
-        name: Fault code
+        name: Fault Code
       - entity: sensor.air_humidifier_mcu_temperature
-        name: MCU temp
+        name: MCU Temp
+      - entity: sensor.air_humidifier_country_code
+        name: Country Code
+grid_options:
+  columns: full
 ```
 
 ## Feedback
