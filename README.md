@@ -78,14 +78,148 @@ First, look up the desired device on the [Xiaomi MIoT Spec](https://home.miot-sp
 
 Each device defines its service (`SIID`) and property (`PIID`) IDs. You just have to add all the desired properties with their according IDs to your ESPHome yaml config.
 
-Alternatively, you can use the online
-[miot2esphome utility](https://cristianchelu.github.io/miot2esphome/) to
-try to automatically generate a starter configuration for you, based on the
-published device specs. You can then edit this to make sure everything works.
-
 For examples, see the [supported devices](#supported-devices) table above and compare a config against its specification.
 
 Once your newly added device is working, please open a PR to add its config here!
+
+## Home assistant UI Cards
+
+You can use this card to control the Xiaomi humidifier 2 (ca4)
+![CA4 home assistant esphome card](screenshots/image.png)
+
+```
+type: vertical-stack
+cards:
+  - type: custom:mushroom-title-card
+    title: Humidifier
+    subtitle: Smartmi Evaporative 2
+
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: sensor.air_humidifier_relative_humidity
+        name: Humidity
+        icon: mdi:water-percent
+        icon_color: blue
+        primary_info: state
+        secondary_info: name
+      - type: custom:mushroom-entity-card
+        entity: sensor.air_humidifier_temperature
+        name: Temperature
+        icon: mdi:thermometer
+        icon_color: orange
+        primary_info: state
+        secondary_info: name
+      - type: custom:mushroom-entity-card
+        entity: sensor.air_humidifier_water_level
+        name: Water
+        icon: mdi:cup-water
+        icon_color: cyan
+        primary_info: state
+        secondary_info: name
+
+  - type: custom:mushroom-fan-card
+    entity: fan.air_humidifier_fan
+    name: Fan
+    icon_animation: true
+    show_percentage_control: true
+    show_oscillate_control: false
+    collapsible_controls: false
+    fill_container: false
+
+  - type: custom:mushroom-select-card
+    entity: select.air_humidifier_display_brightness
+    name: Display
+    icon: mdi:brightness-6
+
+  - type: custom:mushroom-number-card
+    entity: number.air_humidifier_target_humidity
+    name: Target humidity
+    icon: mdi:target
+    icon_color: teal
+    display_mode: slider
+
+  - type: conditional
+    conditions:
+      - entity: fan.air_humidifier_fan
+        attribute: preset_mode
+        state: Auto
+    card:
+      type: custom:mushroom-template-card
+      primary: Auto mode active
+      secondary: >-
+        Target {{ states('number.air_humidifier_target_humidity') }}% - now {{
+        states('sensor.air_humidifier_relative_humidity') }}%
+      icon: mdi:auto-mode
+      icon_color: green
+      fill_container: true
+
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: switch.air_humidifier_dry
+        name: Dry
+        icon: mdi:water-minus
+        icon_color: amber
+        tap_action:
+          action: toggle
+      - type: custom:mushroom-entity-card
+        entity: switch.air_humidifier_child_lock
+        name: Lock
+        icon: mdi:lock
+        icon_color: red
+        tap_action:
+          action: toggle
+      - type: custom:mushroom-entity-card
+        entity: switch.air_humidifier_notification_sounds
+        name: Sound
+        icon: mdi:volume-high
+        icon_color: purple
+        tap_action:
+          action: toggle
+      - type: custom:mushroom-entity-card
+        entity: switch.air_humidifier_clean_mode
+        name: Clean
+        icon: mdi:spray-bottle
+        icon_color: pink
+        tap_action:
+          action: toggle
+
+  - type: custom:mini-graph-card
+    entities:
+      - entity: sensor.air_humidifier_relative_humidity
+        name: Humidity
+        color: '#03a9f4'
+      - entity: number.air_humidifier_target_humidity
+        name: Target
+        color: '#4caf50'
+        show_state: true
+        y_axis: secondary
+    name: Humidity trend
+    hours_to_show: 24
+    points_per_hour: 6
+    line_width: 2
+    smoothing: true
+    show:
+      labels: true
+      labels_secondary: false
+      legend: true
+
+  - type: entities
+    title: Diagnostics
+    show_header_toggle: false
+    entities:
+      - entity: sensor.air_humidifier_motor_speed
+        name: Motor RPM
+        icon: mdi:fan
+      - entity: sensor.air_humidifier_actual_speed
+        name: Actual RPM
+        icon: mdi:fan-clock
+      - entity: sensor.air_humidifier_device_fault_code
+        name: Fault code
+      - entity: sensor.air_humidifier_mcu_temperature
+        name: MCU temp
+```
 
 ## Feedback
 
@@ -95,3 +229,4 @@ Alternatively, there's a [thread](https://community.home-assistant.io/t/esphome-
 
 ## Inspired by
 https://github.com/jaromeyer/mipurifier-esphome
+https://github.com/dhewg/esphome-miot
