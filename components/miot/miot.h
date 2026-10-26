@@ -4,6 +4,7 @@
 #include <deque>
 #include <map>
 #include <queue>
+#include <vector>
 #include <utility>
 
 #include "esphome/core/component.h"
@@ -121,7 +122,7 @@ class Miot : public Component,
   uint32_t heartbeat_siid_{0};
   uint32_t heartbeat_piid_{0};
   std::string ota_net_indicator_;
-  std::map<std::pair<uint32_t, uint32_t>, MiotListener> listeners_;
+  std::map<std::pair<uint32_t, uint32_t>, std::vector<MiotListener>> listeners_;
 #ifdef USE_EVENT
   std::map<std::pair<uint32_t, uint32_t>, MiotEventListener> event_listeners_;
 #endif
