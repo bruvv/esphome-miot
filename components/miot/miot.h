@@ -112,6 +112,8 @@ class Miot : public Component,
 
   uint8_t rx_message_[MAX_LINE_LENGTH + 1];
   size_t rx_count_{0};
+  // Ignore the remainder of an oversized UART frame until its terminator.
+  bool rx_discarding_{false};
   uint32_t last_rx_char_timestamp_{0};
   const char *last_net_reply_{nullptr};
   std::string model_;
