@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <vector>
 
@@ -111,16 +112,30 @@ void Miot::on_ota_global_state(ota::OTAState state, float progress, uint8_t erro
 void Miot::loop() {
   uint8_t c;
 
-  if (rx_count_ > 0 && millis() - last_rx_char_timestamp_ > RECEIVE_TIMEOUT) {
-    ESP_LOGE(TAG, "Timeout while receiving from MCU, dropping message '%s'", get_printable_rx_message().c_str());
+  if ((rx_count_ > 0 || rx_discarding_) && millis() - last_rx_char_timestamp_ > RECEIVE_TIMEOUT) {
+    if (!rx_discarding_) {
+      ESP_LOGE(TAG, "Timeout while receiving from MCU, dropping message '%s'", get_printable_rx_message().c_str());
+    }
     rx_count_ = 0;
+    rx_discarding_ = false;
   }
 
   while (this->available()) {
     if (!this->read_byte(&c))
       break;
 
+    if (rx_discarding_) {
+      // An oversized frame must not be parsed as a valid suffix.
+      if (c == '\r')
+        rx_discarding_ = false;
+      last_rx_char_timestamp_ = millis();
+      continue;
+    }
+
     if (c == '\r') {
+      // Ignore empty frames; strtok_r() would otherwise return nullptr.
+      if (rx_count_ == 0)
+        continue;
       ESP_LOGV(TAG, "Received MCU message '%s'", get_printable_rx_message().c_str());
       process_message_();
       rx_count_ = 0;
@@ -128,8 +143,11 @@ void Miot::loop() {
     }
 
     if (rx_count_ >= MAX_LINE_LENGTH) {
-      ESP_LOGE(TAG, "MCU message too long, dropping '%s'", get_printable_rx_message().c_str());
+      ESP_LOGE(TAG, "MCU message too long, discarding until terminator: '%s'", get_printable_rx_message().c_str());
       rx_count_ = 0;
+      rx_discarding_ = true;
+      last_rx_char_timestamp_ = millis();
+      continue;
     }
 
     rx_message_[rx_count_++] = c;
@@ -201,15 +219,20 @@ void Miot::queue_command(const std::string &cmd) {
 }
 
 void Miot::queue_command(const char *fmt, ...) {
-  std::string cmd;
+  std::array<char, MAX_LINE_LENGTH + 1> buffer{};
   va_list args;
 
-  cmd.resize(MAX_LINE_LENGTH);
   va_start(args, fmt);
-  size_t len = vsnprintf(&cmd[0], MAX_LINE_LENGTH + 1, fmt, args);
+  int len = vsnprintf(buffer.data(), buffer.size(), fmt, args);
   va_end(args);
-  cmd.resize(len);
-  queue_command(cmd);
+
+  // vsnprintf() reports the required size, even if the output was truncated.
+  // Never queue a partially formatted command or a negative-size result.
+  if (len < 0 || static_cast<size_t>(len) >= buffer.size()) {
+    ESP_LOGE(TAG, "Could not format MCU command (length %d)", len);
+    return;
+  }
+  queue_command(std::string(buffer.data(), static_cast<size_t>(len)));
 }
 
 void Miot::queue_net_change_command(bool force) {
@@ -387,14 +410,18 @@ std::string Miot::get_time_reply_(bool posix) {
 }
 
 void Miot::mcu_log(const char *fmt, ...) {
-  std::string log;
+  std::array<char, MAX_LINE_LENGTH + 1> buffer{};
   va_list args;
 
-  log.resize(MAX_LINE_LENGTH);
   va_start(args, fmt);
-  size_t len = vsnprintf(&log[0], MAX_LINE_LENGTH + 1, fmt, args);
+  int len = vsnprintf(buffer.data(), buffer.size(), fmt, args);
   va_end(args);
-  log.resize(len);
+  if (len < 0)
+    return;
+
+  // Retain at most MAX_LINE_LENGTH printable bytes for diagnostics.
+  const size_t size = std::min(static_cast<size_t>(len), MAX_LINE_LENGTH);
+  std::string log(buffer.data(), size);
 
   if (std::find(mcu_log_.cbegin(), mcu_log_.cend(), log) == mcu_log_.cend()) {
     if (mcu_log_.size() >= MAX_MCU_LOG_LENGTH)
@@ -441,14 +468,22 @@ void Miot::process_message_() {
   } else if (cmd == "mac") {
     send_reply_(get_mac_address().c_str());
   } else if (cmd == "model") {
-    model_ = strtok_r(nullptr, " ", &saveptr);
-    if (!model_.empty())
+    const char *model = strtok_r(nullptr, " ", &saveptr);
+    if (model != nullptr) {
+      model_ = model;
       ESP_LOGI(TAG, "Model: %s", model_.c_str());
+    } else {
+      ESP_LOGW(TAG, "MCU supplied an empty model");
+    }
     send_reply_("ok");
   } else if (cmd == "mcu_version") {
-    mcu_version_ = strtok_r(nullptr, " ", &saveptr);
-    if (!mcu_version_.empty())
+    const char *version = strtok_r(nullptr, " ", &saveptr);
+    if (version != nullptr) {
+      mcu_version_ = version;
       ESP_LOGI(TAG, "MCU Version: %s", mcu_version_.c_str());
+    } else {
+      ESP_LOGW(TAG, "MCU supplied an empty version");
+    }
     send_reply_("ok");
   } else if (cmd == "error") {
     const char *error = strtok_r(nullptr, "\"", &saveptr);
