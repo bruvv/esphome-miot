@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -64,7 +65,8 @@ void Miot::setup() {
     part.reserve(MAX_COMMAND_LENGTH);
 
     for (auto it = listeners_.cbegin(); it != listeners_.cend(); ++it) {
-      if ((*it).second.poll) {
+      if (std::any_of((*it).second.cbegin(), (*it).second.cend(),
+                      [](const MiotListener &listener) { return listener.poll; })) {
         part = str_snprintf(" %" PRIu32 " %" PRIu32, 32, (*it).first.first, (*it).first.second);
 
         if (cmd.size() + part.size() > MAX_COMMAND_LENGTH) {
@@ -137,10 +139,12 @@ void Miot::loop() {
 
 void Miot::dump_config() {
   ESP_LOGCONFIG(TAG, "MIoT:");
-  if (!model_.empty())
+  if (!model_.empty()) {
     ESP_LOGCONFIG(TAG, "  Model: %s", model_.c_str());
-  if (!mcu_version_.empty())
+  }
+  if (!mcu_version_.empty()) {
     ESP_LOGCONFIG(TAG, "  MCU Version: %s", mcu_version_.c_str());
+  }
   ESP_LOGCONFIG(TAG, "  Heartbeat SIID: %" PRIu32, this->heartbeat_siid_);
   ESP_LOGCONFIG(TAG, "  Heartbeat PIID: %" PRIu32, this->heartbeat_piid_);
   ESP_LOGCONFIG(TAG, "  OTA net indicator: %s", this->ota_net_indicator_.c_str());
@@ -173,11 +177,12 @@ std::string Miot::get_printable_string(const std::string &str) {
 }
 
 void Miot::register_listener(uint32_t siid, uint32_t piid, bool poll, MiotValueType type, const std::function<void(const MiotValue &value)> &func) {
-  if (listeners_.find(std::make_pair(siid, piid)) != listeners_.end()) {
-    ESP_LOGE(TAG, "Property already has a listener: %" PRIu32 " %" PRIu32, siid, piid);
+  auto &listeners = this->listeners_[std::make_pair(siid, piid)];
+  if (!listeners.empty() && listeners.front().type != type) {
+    ESP_LOGE(TAG, "Property has listeners with a different value type: %" PRIu32 " %" PRIu32, siid, piid);
     return;
   }
-  this->listeners_[std::make_pair(siid, piid)] = MiotListener{ .poll = poll, .type = type, .func = func };
+  listeners.push_back(MiotListener{ .poll = poll, .type = type, .func = func });
 }
 
 #ifdef USE_EVENT
@@ -257,19 +262,21 @@ void Miot::update_property(uint32_t siid, uint32_t piid, const char *value) {
     return;
   }
 
-  switch ((*it).second.type) {
-  case mvtInt:
-    (*it).second.func(MiotValue(parse_number<int>(value).value_or(0)));
-    break;
-  case mvtUInt:
-    (*it).second.func(MiotValue(parse_number<uint32_t>(value).value_or(0u)));
-    break;
-  case mvtFloat:
-    (*it).second.func(MiotValue(parse_number<float>(value).value_or(0.0f)));
-    break;
-  case mvtString:
-    (*it).second.func(MiotValue(value));
-    break;
+  for (const auto &listener : it->second) {
+    switch (listener.type) {
+    case mvtInt:
+      listener.func(MiotValue(parse_number<int>(value).value_or(0)));
+      break;
+    case mvtUInt:
+      listener.func(MiotValue(parse_number<uint32_t>(value).value_or(0u)));
+      break;
+    case mvtFloat:
+      listener.func(MiotValue(parse_number<float>(value).value_or(0.0f)));
+      break;
+    case mvtString:
+      listener.func(MiotValue(value));
+      break;
+    }
   }
 }
 
