@@ -38,6 +38,15 @@ def ensure_option_map(value):
 
     return value
 
+def validate_speed_range(config):
+    speed = config[CONF_SPEED]
+    if speed[CONF_STEP] == 0:
+        raise cv.Invalid("fan speed step must be greater than zero")
+    if speed[CONF_MIN_VALUE] > speed[CONF_MAX_VALUE]:
+        raise cv.Invalid("fan speed min_value must not exceed max_value")
+    return config
+
+
 CONFIG_SCHEMA = cv.All(
     fan.fan_schema(MiotFan)
     .extend(
@@ -79,6 +88,7 @@ CONFIG_SCHEMA = cv.All(
             ),
         }
     ).extend(cv.COMPONENT_SCHEMA),
+    validate_speed_range,
 )
 
 async def to_code(config):
